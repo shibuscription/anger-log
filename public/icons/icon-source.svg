@@ -1,0 +1,35 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE1C9"/>
+      <stop offset="1" stop-color="#FF8A5B"/>
+    </linearGradient>
+    <linearGradient id="anger" x1="332" y1="88" x2="446" y2="202" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF5A4D"/>
+      <stop offset="1" stop-color="#FF8A2A"/>
+    </linearGradient>
+    <filter id="shadow" x="96" y="88" width="320" height="328" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#B94B2E" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <rect x="118" y="112" width="246" height="286" rx="34" fill="#FFFDF8"/>
+    <rect x="118" y="112" width="246" height="54" rx="34" fill="#FFD7BE"/>
+    <rect x="146" y="192" width="188" height="12" rx="6" fill="#D6E4F6"/>
+    <rect x="146" y="230" width="188" height="12" rx="6" fill="#D6E4F6"/>
+    <rect x="146" y="268" width="152" height="12" rx="6" fill="#D6E4F6"/>
+    <rect x="146" y="306" width="176" height="12" rx="6" fill="#D6E4F6"/>
+    <rect x="146" y="344" width="128" height="12" rx="6" fill="#D6E4F6"/>
+    <rect x="108" y="132" width="28" height="246" rx="14" fill="#7A9BC2"/>
+    <circle cx="122" cy="174" r="8" fill="#F5F9FF"/>
+    <circle cx="122" cy="232" r="8" fill="#F5F9FF"/>
+    <circle cx="122" cy="290" r="8" fill="#F5F9FF"/>
+    <circle cx="122" cy="348" r="8" fill="#F5F9FF"/>
+  </g>
+  <g>
+    <path d="M350 88L374 124L414 102L402 146L446 158L406 182L430 220L384 212L372 256L346 218L308 244L320 202L274 188L316 164L294 126L340 136L350 88Z" fill="url(#anger)"/>
+    <path d="M350 116L365 138L390 124L382 152L410 160L384 176L400 202L372 196L364 224L348 200L324 216L332 188L304 180L330 164L316 138L344 144L350 116Z" fill="#FFF4EC" fill-opacity="0.9"/>
+    <path d="M350 132L359 146L376 136L370 156L390 162L372 174L382 192L362 188L356 208L346 190L330 200L336 182L316 176L334 164L324 148L344 152L350 132Z" fill="url(#anger)"/>
+  </g>
+</svg>

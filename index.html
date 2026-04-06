@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>アンガーログ & べきログ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      background: #f5f5f5;
+    }
+
+    header {
+      padding: 12px 16px;
+      background: #ff7043;
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    main {
+      padding: 16px;
+      padding-bottom: 72px;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 16px 0 4px;
+    }
+
+    .small-text {
+      font-size: 12px;
+      color: #666;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 64px;
+      resize: vertical;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    button.primary {
+      width: 100%;
+      padding: 12px;
+      margin-top: 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 999px;
+      background: #ff7043;
+      color: #fff;
+    }
+
+    button.primary:active {
+      opacity: 0.85;
+    }
+
+    .bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-top: 1px solid #ddd;
+      background: #fff;
+      display: flex;
+      justify-content: space-around;
+      padding: 4px 0;
+    }
+
+    .bottom-nav button {
+      flex: 1;
+      border: none;
+      background: none;
+      padding: 6px 0;
+      font-size: 12px;
+      color: #555;
+    }
+
+    .bottom-nav button.active {
+      color: #ff7043;
+      font-weight: 600;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      font-size: 13px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .badge-beki {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #eee;
+    }
+
+    .badge-beki.done {
+      background: #c8e6c9;
+      color: #256029;
+    }
+
+    .stars {
+      font-size: 12px;
+      color: #ff7043;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#ff7043" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="アンガーログ" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+  <script type="module">
+    import { initializeApp } from "firebase/app";
+    import {
+      getFirestore, collection, addDoc, getDocs, updateDoc, doc, query, orderBy, deleteDoc,
+      enableIndexedDbPersistence
+    } from "firebase/firestore";
+
+    const env = import.meta.env;
+    const firebaseConfig = {
+      apiKey: env.VITE_FIREBASE_API_KEY,
+      authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: env.VITE_FIREBASE_APP_ID,
+      ...(env.VITE_FIREBASE_MEASUREMENT_ID
+        ? { measurementId: env.VITE_FIREBASE_MEASUREMENT_ID }
+        : {}),
+    };
+
+    const requiredEntries = [
+      ["apiKey", firebaseConfig.apiKey],
+      ["authDomain", firebaseConfig.authDomain],
+      ["projectId", firebaseConfig.projectId],
+      ["storageBucket", firebaseConfig.storageBucket],
+      ["messagingSenderId", firebaseConfig.messagingSenderId],
+      ["appId", firebaseConfig.appId],
+    ];
+    const missingEnvKeys = requiredEntries
+      .filter(([, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingEnvKeys.length > 0) {
+      throw new Error(`Firebase 設定が不足しています: ${missingEnvKeys.join(", ")}`);
+    }
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    enableIndexedDbPersistence(db).catch((err) => {
+      console.warn("オフライン永続化エラー:", err.code);
+    });
+
+    window.db = db;
+    window.firestoreFns = { collection, addDoc, getDocs, updateDoc, doc, query, orderBy, deleteDoc };
+  </script>
+
+</head>
+
+<body>
+  <header id="appTitle">アンガーログ</header>
+
+  <main id="screen-new">
+    <div class="small-text" id="nowText"></div>
+
+    <div class="section-title">場所</div>
+    <input type="text" id="place" placeholder="例：職場・自宅・車の中など" />
+
+    <button type="button" onclick="getCurrentLocation()" style="margin-top: 8px; padding: 6px 10px; font-size: 12px;">
+      📍 現在地から位置情報を記録する
+    </button>
+    <div id="locationInfo" class="small-text" style="margin-top: 4px;">
+      ※位置情報は未取得
+    </div>
+
+    <div class="section-title">出来事</div>
+    <textarea id="event" placeholder="例：上司に急に予定変更を言われた"></textarea>
+
+    <div class="section-title">怒りの強さ（1〜10）</div>
+    <input type="range" id="intensity" min="1" max="10" value="5"
+      oninput="document.getElementById('intensityValue').textContent = this.value" />
+    <div class="small-text">
+      強さ：<span id="intensityValue">5</span>/10
+    </div>
+
+    <button class="primary" onclick="saveAngerLog()">
+      この怒りを記録する
+    </button>
+  </main>
+
+  <main id="screen-list" class="hidden">
+    <div class="section-title">最近のアンガーログ</div>
+    <div class="small-text">新しい順に表示します</div>
+    <div id="listContainer" style="margin-top: 8px;"></div>
+  </main>
+
+  <main id="screen-reflect" class="hidden">
+    <div id="reflectContent"></div>
+  </main>
+
+  <div class="bottom-nav">
+    <button id="nav-new" class="active" onclick="switchScreen('new')">記録</button>
+    <button id="nav-list" onclick="switchScreen('list')">一覧</button>
+    <button id="nav-reflect" onclick="switchScreen('reflect')">ふりかえり</button>
+  </div>
+
+  <script>
+    let angerLogs = [];
+    let latestLocation = null;
+    let reflectIndex = 0;
+    let reflectSingleMode = false;
+
+    function getFirestoreHelpers() {
+      const db = window.db;
+      const fns = window.firestoreFns;
+      if (!db || !fns) {
+        throw new Error("Firestore がまだ初期化されていません。ページを再読み込みしてみてください。");
+      }
+      const { collection, addDoc, getDocs, updateDoc, doc, query, orderBy, deleteDoc } = fns;
+      return { db, collection, addDoc, getDocs, updateDoc, doc, query, orderBy, deleteDoc };
+    }
+
+    function updateNowText() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      const h = String(now.getHours()).padStart(2, "0");
+      const min = String(now.getMinutes()).padStart(2, "0");
+      document.getElementById("nowText").textContent =
+        `${y}/${m}/${d} ${h}:${min} に記録`;
+    }
+    updateNowText();
+
+    async function loadAllLogs() {
+      const { db, collection, getDocs, query, orderBy } = getFirestoreHelpers();
+      const q = query(collection(db, "anger_logs"), orderBy("date", "desc"));
+      const snapshot = await getDocs(q);
+      angerLogs = snapshot.docs.map(docSnap => ({
+        ...docSnap.data(),
+        id: docSnap.id,
+      }));
+    }
+
+    function switchScreen(key) {
+      document.getElementById("screen-new").classList.add("hidden");
+      document.getElementById("screen-list").classList.add("hidden");
+      document.getElementById("screen-reflect").classList.add("hidden");
+      document.getElementById("nav-new").classList.remove("active");
+      document.getElementById("nav-list").classList.remove("active");
+      document.getElementById("nav-reflect").classList.remove("active");
+
+      if (key === "new") {
+        document.getElementById("screen-new").classList.remove("hidden");
+        document.getElementById("nav-new").classList.add("active");
+        document.getElementById("appTitle").textContent = "アンガーログ";
+        updateNowText();
+      } else if (key === "list") {
+        document.getElementById("screen-list").classList.remove("hidden");
+        document.getElementById("nav-list").classList.add("active");
+        document.getElementById("appTitle").textContent = "アンガーログ一覧";
+        renderList();
+      } else if (key === "reflect") {
+        document.getElementById("screen-reflect").classList.remove("hidden");
+        document.getElementById("nav-reflect").classList.add("active");
+
+        document.getElementById("appTitle").textContent = reflectSingleMode
+          ? "べきの詳細"
+          : "今日のべきふりかえり";
+
+        if (!reflectSingleMode) {
+          startReflection();
+        }
+
+        reflectSingleMode = false;
+      }
+    }
+
+    function getCurrentLocation() {
+      if (!navigator.geolocation) {
+        alert("この端末では位置情報が利用できません。");
+        return;
+      }
+      document.getElementById("locationInfo").textContent = "現在地を取得中…";
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+          latestLocation = { latitude, longitude, accuracy };
+          document.getElementById("locationInfo").textContent =
+            `位置情報：緯度 ${latitude.toFixed(5)} / 経度 ${longitude.toFixed(5)}（誤差約${Math.round(accuracy)}m）`;
+        },
+        (error) => {
+          console.error(error);
+          let msg = "位置情報を取得できませんでした。";
+          if (error.code === error.PERMISSION_DENIED) {
+            msg += " 位置情報の許可が必要です。";
+          }
+          document.getElementById("locationInfo").textContent = msg;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    }
+
+    async function saveAngerLog() {
+      const place = document.getElementById("place").value.trim();
+      const event = document.getElementById("event").value.trim();
+      const intensity = Number(document.getElementById("intensity").value);
+
+      if (!event) {
+        alert("出来事を一言だけでも書いておこう。");
+        return;
+      }
+
+      const now = new Date();
+      const log = {
+        id: Date.now().toString(),
+        date: now.toISOString(),
+        place,
+        event,
+        intensity,
+        location: latestLocation,
+        beki_date: null,
+        beki_text: null,
+        beki_importance: null,
+      };
+
+      try {
+        const { db, collection, addDoc } = getFirestoreHelpers();
+        const docRef = await addDoc(collection(db, "anger_logs"), log);
+        angerLogs.unshift({ ...log, id: docRef.id });
+      } catch (e) {
+        console.error(e);
+        alert("保存エラー: " + (e.code || "") + " / " + (e.message || ""));
+        return;
+      }
+
+      document.getElementById("place").value = "";
+      document.getElementById("event").value = "";
+      document.getElementById("intensity").value = 5;
+      document.getElementById("intensityValue").textContent = "5";
+      latestLocation = null;
+      document.getElementById("locationInfo").textContent = "※位置情報は未取得";
+
+      alert("怒りを記録しました！");
+    }
+
+    async function renderList() {
+      const container = document.getElementById("listContainer");
+      container.innerHTML = '<div class="small-text">読み込み中…</div>';
+
+      try {
+        await loadAllLogs();
+      } catch (e) {
+        console.error(e);
+        container.innerHTML = '<div class="small-text">データの取得に失敗しました。</div>';
+        return;
+      }
+
+      container.innerHTML = "";
+
+      if (angerLogs.length === 0) {
+        container.innerHTML = '<div class="small-text">まだ記録がありません。</div>';
+        return;
+      }
+
+      angerLogs.forEach((log) => {
+        const d = new Date(log.date);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const h = String(d.getHours()).padStart(2, "0");
+        const min = String(d.getMinutes()).padStart(2, "0");
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.onclick = () => openReflectForId(log.id);
+
+        const bekiDone = !!log.beki_text;
+        const bekiText = log.beki_text || "";
+        const bekiImportance = log.beki_importance || null;
+        const eventShort = log.event.slice(0, 40) + (log.event.length > 40 ? "…" : "");
+        const bekiShort = bekiText
+          ? bekiText.slice(0, 40) + (bekiText.length > 40 ? "…" : "")
+          : "";
+
+        card.innerHTML = `
+    <div class="card-header">
+      <div>${y}/${m}/${day} ${h}:${min}</div>
+      <div class="stars">${log.intensity}/10</div>
+    </div>
+    <div class="small-text">${log.place || "場所未記録"}</div>
+    <div>${eventShort}</div>
+    <div style="margin-top:4px;">
+      <span class="badge-beki ${bekiDone ? "done" : ""}">
+        ${bekiDone ? "べき記録あり" : "べき未記録"}
+      </span>
+    </div>
+    ${bekiDone
+            ? `
+      <div class="small-text" style="margin-top:2px;">
+        べき：${bekiShort}
+      </div>
+      <div class="small-text">
+        重要度：${bekiImportance}/5
+      </div>
+      `
+            : ""
+          }
+  `;
+        container.appendChild(card);
+      });
+    }
+
+    function openReflectForId(id) {
+      const idx = angerLogs.findIndex(l => l.id === id);
+      if (idx !== -1) {
+        reflectSingleMode = true;
+        switchScreen("reflect");
+        renderReflectionSingle(angerLogs[idx], true);
+      }
+    }
+
+    async function startReflection() {
+      const area = document.getElementById("reflectContent");
+      area.innerHTML = '<div class="small-text">読み込み中…</div>';
+
+      try {
+        await loadAllLogs();
+      } catch (e) {
+        console.error(e);
+        area.innerHTML = '<div class="small-text">データの取得に失敗しました。</div>';
+        return;
+      }
+
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = today.getMonth();
+      const d = today.getDate();
+
+      const todayList = angerLogs.filter(log => {
+        const ld = new Date(log.date);
+        return (
+          ld.getFullYear() === y &&
+          ld.getMonth() === m &&
+          ld.getDate() === d &&
+          !log.beki_text
+        );
+      }).sort((a, b) => (a.date > b.date ? 1 : -1));
+
+      window._reflectList = todayList;
+      reflectIndex = 0;
+
+      if (todayList.length === 0) {
+        area.innerHTML = '<div class="small-text">今日、べきを振り返る対象はありません。</div>';
+        return;
+      }
+
+      renderReflectionStep();
+    }
+
+    function renderReflectionStep() {
+      const list = window._reflectList || [];
+      const area = document.getElementById("reflectContent");
+
+      if (reflectIndex >= list.length) {
+        area.innerHTML = '<div>今日のべきログはすべて入力済みです 🎉</div>';
+        return;
+      }
+
+      const log = list[reflectIndex];
+      renderReflectionSingle(log, false);
+    }
+
+    function renderReflectionSingle(log, singleMode) {
+      const area = document.getElementById("reflectContent");
+      const d = new Date(log.date);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const h = String(d.getHours()).padStart(2, "0");
+      const min = String(d.getMinutes()).padStart(2, "0");
+
+      const existingBeki = log.beki_text || "";
+      const existingImportance = log.beki_importance || 3;
+      const existingPlace = log.place || "";
+      const existingEvent = log.event || "";
+
+      area.innerHTML = `
+        <div class="section-title">このときの怒り</div>
+        <div class="card">
+          <div class="card-header">
+            <div>${y}/${m}/${day} ${h}:${min}</div>
+            <div class="stars">${log.intensity}/10</div>
+          </div>
+
+          <div class="section-title" style="font-size:12px; margin-top:4px;">場所（必要なら修正）</div>
+          <input
+            type="text"
+            id="editPlace"
+            value="${existingPlace.replace(/"/g, "&quot;")}"
+            placeholder="例：職場・自宅・車の中など"
+            style="margin-bottom:4px;"
+          />
+
+          <div class="section-title" style="font-size:12px; margin-top:4px;">出来事（必要なら修正）</div>
+          <textarea id="editEvent" style="margin-top:2px;">${existingEvent}</textarea>
+        </div>
+
+        <div class="section-title">この怒りの裏にあった「べき」</div>
+        <textarea id="bekiText" placeholder="例：上司は予定変更をもっと早く伝えるべきだ">${existingBeki}</textarea>
+
+        <div class="section-title">べきの重要度（1〜5）</div>
+        <input
+          type="range"
+          id="bekiImportance"
+          min="1"
+          max="5"
+          value="${existingImportance}"
+          oninput="document.getElementById('bekiImportanceValue').textContent = this.value"
+        />
+        <div class="small-text">
+          重要度：<span id="bekiImportanceValue">${existingImportance}</span>/5
+        </div>
+
+        <button class="primary" onclick="saveBekiFor('${log.id}', ${singleMode})">
+          このべきと怒りの内容を保存する
+        </button>
+
+        <button class="primary"
+                style="margin-top:8px; background:#ddd; color:#333;"
+                onclick="deleteAngerLog('${log.id}', ${singleMode})">
+          この記録を削除する
+        </button>
+
+        ${!singleMode ? `
+        <div class="small-text" style="margin-top:8px; text-align:right;">
+          (${reflectIndex + 1}件目 / ${(window._reflectList || []).length}件)
+        </div>` : ""}
+      `;
+    }
+
+    async function saveBekiFor(id, singleMode) {
+      const bekiText = document.getElementById("bekiText").value.trim();
+      const importance = Number(document.getElementById("bekiImportance").value);
+      const now = new Date().toISOString();
+
+      const placeInput = document.getElementById("editPlace");
+      const eventInput = document.getElementById("editEvent");
+      const newPlace = placeInput ? placeInput.value.trim() : "";
+      const newEvent = eventInput ? eventInput.value.trim() : "";
+
+      if (!bekiText) {
+        alert("べきの内容を一言だけでも書いておこう。");
+        return;
+      }
+
+      try {
+        const { db, doc, updateDoc } = getFirestoreHelpers();
+        const ref = doc(db, "anger_logs", id);
+        await updateDoc(ref, {
+          place: newPlace,
+          event: newEvent,
+          beki_text: bekiText,
+          beki_importance: importance,
+          beki_date: now,
+        });
+      } catch (e) {
+        console.error(e);
+        alert("保存エラー: " + (e.code || "") + " / " + (e.message || ""));
+        return;
+      }
+
+      const idx = angerLogs.findIndex(l => l.id === id);
+      if (idx !== -1) {
+        angerLogs[idx].place = newPlace;
+        angerLogs[idx].event = newEvent;
+        angerLogs[idx].beki_text = bekiText;
+        angerLogs[idx].beki_importance = importance;
+        angerLogs[idx].beki_date = now;
+      }
+
+      alert("べきと怒りの内容を保存しました。");
+
+      if (singleMode) {
+        switchScreen("list");
+      } else {
+        reflectIndex++;
+        renderReflectionStep();
+      }
+    }
+
+    async function deleteAngerLog(id, singleMode) {
+      if (!confirm("この記録を削除しますか？\n（べきログも含めて元に戻せません）")) {
+        return;
+      }
+
+      try {
+        const { db, doc, deleteDoc } = getFirestoreHelpers();
+        const ref = doc(db, "anger_logs", id);
+        await deleteDoc(ref);
+      } catch (e) {
+        console.error(e);
+        alert("削除エラー: " + (e.code || "") + " / " + (e.message || ""));
+        return;
+      }
+
+      angerLogs = angerLogs.filter(l => l.id !== id);
+
+      if (!singleMode && window._reflectList) {
+        window._reflectList = window._reflectList.filter(l => l.id !== id);
+        renderReflectionStep();
+      } else {
+        switchScreen("list");
+      }
+    }
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/service-worker.js")
+          .catch((err) => {
+            console.error("ServiceWorker registration failed: ", err);
+          });
+      });
+    }
+  </script>
+</body>
+
+</html>
