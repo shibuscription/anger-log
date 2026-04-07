@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // users/{uid} は本人だけが読み書きできる
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      // 配下の anger_logs も本人だけに閉じる
+      match /anger_logs/{logId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // 将来 public_stats/summary のような公開集計を置く場合は
+    // ここに read 条件を追加する想定。
+  }
+}
