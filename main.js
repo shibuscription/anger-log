@@ -895,6 +895,7 @@ onAuthStateChanged(auth, async (user) => {
 
     await ensureUserDocument(user);
     resetLocalState();
+    await loadAllLogs();
   } catch (error) {
     console.error(error);
     state.currentUser = null;
