@@ -20,26 +20,50 @@
 <body>
   <header class="topbar">
     <div id="appTitle" class="topbar-title">アンガーログ</div>
-    <div id="userMenuWrap" class="user-menu-wrap hidden">
-      <button
-        id="userMenuButton"
-        type="button"
-        class="user-menu-button"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label="ユーザーメニューを開く"
-      >
-        <img id="userAvatarImage" class="user-avatar-image hidden" alt="" />
-        <span id="userAvatarFallback" class="user-avatar-fallback" aria-hidden="true">人</span>
-      </button>
-      <div id="userMenuPopover" class="user-menu-popover hidden" role="menu" aria-label="ユーザー情報">
-        <div class="user-menu-info">
-          <strong id="userMenuName">ユーザー</strong>
-          <span id="userMenuEmail">email@example.com</span>
-        </div>
-        <button id="userMenuLogoutButton" type="button" class="user-menu-logout" role="menuitem">
-          ログアウト
+    <div class="topbar-actions">
+      <div id="appMenuWrap" class="menu-wrap">
+        <button
+          id="appMenuButton"
+          type="button"
+          class="icon-button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-label="メニューを開く"
+        >
+          <span class="hamburger-icon" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
         </button>
+        <div id="appMenuPopover" class="menu-popover hidden" role="menu" aria-label="アプリメニュー">
+          <button id="appLockSettingsButton" type="button" class="menu-item" role="menuitem">
+            アプリロック設定
+          </button>
+        </div>
+      </div>
+
+      <div id="userMenuWrap" class="menu-wrap hidden">
+        <button
+          id="userMenuButton"
+          type="button"
+          class="user-menu-button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-label="ユーザーメニューを開く"
+        >
+          <img id="userAvatarImage" class="user-avatar-image hidden" alt="" />
+          <span id="userAvatarFallback" class="user-avatar-fallback" aria-hidden="true">人</span>
+        </button>
+        <div id="userMenuPopover" class="menu-popover hidden" role="menu" aria-label="ユーザー情報">
+          <div class="user-menu-info">
+            <strong id="userMenuName">ユーザー</strong>
+            <span id="userMenuEmail">email@example.com</span>
+          </div>
+          <button id="userMenuLogoutButton" type="button" class="user-menu-logout" role="menuitem">
+            ログアウト
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -139,6 +163,107 @@
       </span>
       <span class="nav-label">ふりかえり</span>
     </button>
+  </div>
+
+  <div id="settingsSheet" class="sheet-overlay hidden" aria-hidden="true">
+    <div class="sheet-backdrop" data-sheet-close="true"></div>
+    <section class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settingsSheetTitle">
+      <div class="sheet-header">
+        <div>
+          <div class="sheet-title" id="settingsSheetTitle">アプリロック設定</div>
+          <div class="small-text">4桁コードで、周囲から見られにくくするための軽いロックです。</div>
+        </div>
+        <button id="settingsSheetCloseButton" type="button" class="sheet-close-button" aria-label="設定を閉じる">×</button>
+      </div>
+
+      <div class="settings-block">
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">アプリロック</div>
+            <div class="small-text">起動時や復帰時に4桁コード解除を求めます。</div>
+          </div>
+          <label class="switch">
+            <input id="lockEnabledToggle" type="checkbox" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div id="lockSettingsDetails" class="settings-block hidden">
+        <div class="settings-field">
+          <label class="settings-label" for="autoLockSelect">自動ロック時間</label>
+          <select id="autoLockSelect" class="settings-select">
+            <option value="0">すぐ</option>
+            <option value="60000">1分</option>
+            <option value="300000">5分</option>
+            <option value="900000">15分</option>
+          </select>
+        </div>
+
+        <div class="settings-actions">
+          <button id="changeLockCodeButton" type="button" class="secondary sheet-action-button">
+            4桁コードを変更する
+          </button>
+        </div>
+      </div>
+
+      <div id="lockSetupFlow" class="settings-block hidden">
+        <div class="settings-label" id="lockSetupTitle">4桁コードを設定</div>
+        <div class="small-text" id="lockSetupDescription">解除に使う4桁コードを入力してください。</div>
+        <div class="pin-dots">
+          <span class="pin-dot" data-setup-dot="0"></span>
+          <span class="pin-dot" data-setup-dot="1"></span>
+          <span class="pin-dot" data-setup-dot="2"></span>
+          <span class="pin-dot" data-setup-dot="3"></span>
+        </div>
+        <div id="lockSetupError" class="settings-error hidden"></div>
+        <div class="pin-pad" id="lockSetupPad">
+          <button type="button" class="pin-key" data-pin-key="1">1</button>
+          <button type="button" class="pin-key" data-pin-key="2">2</button>
+          <button type="button" class="pin-key" data-pin-key="3">3</button>
+          <button type="button" class="pin-key" data-pin-key="4">4</button>
+          <button type="button" class="pin-key" data-pin-key="5">5</button>
+          <button type="button" class="pin-key" data-pin-key="6">6</button>
+          <button type="button" class="pin-key" data-pin-key="7">7</button>
+          <button type="button" class="pin-key" data-pin-key="8">8</button>
+          <button type="button" class="pin-key" data-pin-key="9">9</button>
+          <button type="button" class="pin-key pin-key-muted" data-pin-action="clear">消去</button>
+          <button type="button" class="pin-key" data-pin-key="0">0</button>
+          <button type="button" class="pin-key pin-key-muted" data-pin-action="delete">⌫</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="lockOverlay" class="lock-overlay hidden" aria-hidden="true">
+    <section class="lock-card" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+      <div class="lock-icon-wrap">
+        <img src="/icons/icon-192.png" alt="" class="lock-app-icon" />
+      </div>
+      <div class="lock-title" id="lockTitle">ロックされています</div>
+      <div class="lock-subtitle">4桁コードを入力して続けてください。</div>
+      <div class="pin-dots pin-dots-large">
+        <span class="pin-dot" data-lock-dot="0"></span>
+        <span class="pin-dot" data-lock-dot="1"></span>
+        <span class="pin-dot" data-lock-dot="2"></span>
+        <span class="pin-dot" data-lock-dot="3"></span>
+      </div>
+      <div id="lockError" class="settings-error hidden"></div>
+      <div class="pin-pad lock-pad" id="lockPad">
+        <button type="button" class="pin-key" data-lock-key="1">1</button>
+        <button type="button" class="pin-key" data-lock-key="2">2</button>
+        <button type="button" class="pin-key" data-lock-key="3">3</button>
+        <button type="button" class="pin-key" data-lock-key="4">4</button>
+        <button type="button" class="pin-key" data-lock-key="5">5</button>
+        <button type="button" class="pin-key" data-lock-key="6">6</button>
+        <button type="button" class="pin-key" data-lock-key="7">7</button>
+        <button type="button" class="pin-key" data-lock-key="8">8</button>
+        <button type="button" class="pin-key" data-lock-key="9">9</button>
+        <button type="button" class="pin-key pin-key-muted" data-lock-action="clear">消去</button>
+        <button type="button" class="pin-key" data-lock-key="0">0</button>
+        <button type="button" class="pin-key pin-key-muted" data-lock-action="delete">⌫</button>
+      </div>
+    </section>
   </div>
 
   <script type="module" src="/main.js"></script>

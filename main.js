@@ -59,6 +59,14 @@ enableIndexedDbPersistence(db).catch((err) => {
   console.warn("オフライン永続化エラー:", err.code);
 });
 
+const LOCK_STORAGE_KEY = "angerlog.app_lock";
+const LOCK_METHOD = "pin4";
+const LOCK_REASON_STARTUP = "startup";
+const LOCK_REASON_RESUME = "resume";
+const LOCK_REASON_IDLE = "idle";
+const DEFAULT_AUTO_LOCK_MS = 5 * 60 * 1000;
+const AUTO_LOCK_OPTIONS = new Set([0, 60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000]);
+
 const state = {
   currentUser: null,
   angerLogs: [],
@@ -67,13 +75,29 @@ const state = {
   reflectSingleMode: false,
   reflectList: [],
   authResolved: false,
+  appMenuOpen: false,
   userMenuOpen: false,
   serviceWorkerPromptShown: false,
   isRefreshingForUpdate: false,
+  lockConfig: loadLockConfig(),
+  lockSetupMode: "idle",
+  lockSetupStep: "enter",
+  lockSetupInput: "",
+  lockSetupFirstPin: "",
+  lockSetupError: "",
+  lockInput: "",
+  lockError: "",
+  isLocked: false,
+  lastHiddenAt: null,
+  idleTimerId: null,
 };
 
 const el = {
   appTitle: document.getElementById("appTitle"),
+  appMenuWrap: document.getElementById("appMenuWrap"),
+  appMenuButton: document.getElementById("appMenuButton"),
+  appMenuPopover: document.getElementById("appMenuPopover"),
+  appLockSettingsButton: document.getElementById("appLockSettingsButton"),
   authCard: document.getElementById("authCard"),
   authPrimaryText: document.getElementById("authPrimaryText"),
   authSecondaryText: document.getElementById("authSecondaryText"),
@@ -108,7 +132,88 @@ const el = {
   navList: document.getElementById("nav-list"),
   navReflect: document.getElementById("nav-reflect"),
   navReflectBadge: document.getElementById("nav-reflect-badge"),
+  settingsSheet: document.getElementById("settingsSheet"),
+  settingsSheetCloseButton: document.getElementById("settingsSheetCloseButton"),
+  lockEnabledToggle: document.getElementById("lockEnabledToggle"),
+  autoLockSelect: document.getElementById("autoLockSelect"),
+  lockSettingsDetails: document.getElementById("lockSettingsDetails"),
+  lockSetupFlow: document.getElementById("lockSetupFlow"),
+  lockSetupTitle: document.getElementById("lockSetupTitle"),
+  lockSetupDescription: document.getElementById("lockSetupDescription"),
+  lockSetupError: document.getElementById("lockSetupError"),
+  changeLockCodeButton: document.getElementById("changeLockCodeButton"),
+  setupDots: Array.from(document.querySelectorAll("[data-setup-dot]")),
+  setupKeyButtons: Array.from(document.querySelectorAll("[data-pin-key]")),
+  setupActionButtons: Array.from(document.querySelectorAll("[data-pin-action]")),
+  lockOverlay: document.getElementById("lockOverlay"),
+  lockError: document.getElementById("lockError"),
+  lockDots: Array.from(document.querySelectorAll("[data-lock-dot]")),
+  lockKeyButtons: Array.from(document.querySelectorAll("[data-lock-key]")),
+  lockActionButtons: Array.from(document.querySelectorAll("[data-lock-action]")),
 };
+
+function normalizeAutoLockMs(value) {
+  const num = Number(value);
+  return AUTO_LOCK_OPTIONS.has(num) ? num : DEFAULT_AUTO_LOCK_MS;
+}
+
+function loadLockConfig() {
+  try {
+    const raw = localStorage.getItem(LOCK_STORAGE_KEY);
+    if (!raw) {
+      return {
+        enabled: false,
+        method: LOCK_METHOD,
+        codeHash: "",
+        autoLockMs: DEFAULT_AUTO_LOCK_MS,
+      };
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      enabled: Boolean(parsed.enabled && parsed.codeHash),
+      method: parsed.method === LOCK_METHOD ? LOCK_METHOD : LOCK_METHOD,
+      codeHash: typeof parsed.codeHash === "string" ? parsed.codeHash : "",
+      autoLockMs: normalizeAutoLockMs(parsed.autoLockMs),
+    };
+  } catch (error) {
+    console.warn("Failed to load app lock config:", error);
+    return {
+      enabled: false,
+      method: LOCK_METHOD,
+      codeHash: "",
+      autoLockMs: DEFAULT_AUTO_LOCK_MS,
+    };
+  }
+}
+
+function saveLockConfig(nextConfig) {
+  state.lockConfig = {
+    enabled: Boolean(nextConfig.enabled && nextConfig.codeHash),
+    method: LOCK_METHOD,
+    codeHash: nextConfig.codeHash || "",
+    autoLockMs: normalizeAutoLockMs(nextConfig.autoLockMs),
+  };
+  localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(state.lockConfig));
+}
+
+function isFourDigitPin(value) {
+  return /^\d{4}$/.test(value);
+}
+
+async function hashPin(pin) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function verifyPin(pin) {
+  if (!isFourDigitPin(pin) || !state.lockConfig.codeHash) {
+    return false;
+  }
+  return (await hashPin(pin)) === state.lockConfig.codeHash;
+}
 
 function getCurrentUidOrThrow() {
   if (!state.currentUser?.uid) {
@@ -223,16 +328,294 @@ function renderUserAvatar(user) {
   el.userAvatarFallback.classList.remove("hidden");
 }
 
+function setAppMenuOpen(open) {
+  state.appMenuOpen = open;
+  el.appMenuPopover.classList.toggle("hidden", !open);
+  el.appMenuButton.setAttribute("aria-expanded", String(open));
+}
+
 function setUserMenuOpen(open) {
   state.userMenuOpen = open;
   el.userMenuPopover.classList.toggle("hidden", !open);
   el.userMenuButton.setAttribute("aria-expanded", String(open));
 }
 
+function closeMenus() {
+  setAppMenuOpen(false);
+  setUserMenuOpen(false);
+}
+
 function updateUserMenu(user) {
   el.userMenuName.textContent = getDisplayName(user);
   el.userMenuEmail.textContent = getEmail(user);
   renderUserAvatar(user);
+}
+
+function updatePinDots(dots, count) {
+  dots.forEach((dot, index) => {
+    dot.classList.toggle("filled", index < count);
+  });
+}
+
+function setLockError(message) {
+  state.lockError = message;
+  el.lockError.textContent = message;
+  el.lockError.classList.toggle("hidden", !message);
+}
+
+function setSetupError(message) {
+  state.lockSetupError = message;
+  el.lockSetupError.textContent = message;
+  el.lockSetupError.classList.toggle("hidden", !message);
+}
+
+function isAppLockEnabled() {
+  return Boolean(state.lockConfig.enabled && state.lockConfig.codeHash);
+}
+
+function clearIdleTimer() {
+  if (state.idleTimerId) {
+    window.clearTimeout(state.idleTimerId);
+    state.idleTimerId = null;
+  }
+}
+
+function openSettingsSheet() {
+  closeMenus();
+  renderLockSettingsUi();
+  el.settingsSheet.classList.remove("hidden");
+  el.settingsSheet.setAttribute("aria-hidden", "false");
+}
+
+function closeSettingsSheet() {
+  el.settingsSheet.classList.add("hidden");
+  el.settingsSheet.setAttribute("aria-hidden", "true");
+  resetLockSetupFlow();
+}
+
+function renderLockSettingsUi() {
+  const enabled = isAppLockEnabled();
+  el.lockEnabledToggle.checked = enabled;
+  el.autoLockSelect.value = String(state.lockConfig.autoLockMs);
+  el.lockSettingsDetails.classList.toggle("hidden", !enabled);
+  el.changeLockCodeButton.classList.toggle("hidden", !enabled);
+  updatePinDots(el.setupDots, state.lockSetupInput.length);
+  setSetupError(state.lockSetupError);
+}
+
+function resetLockSetupFlow() {
+  state.lockSetupMode = "idle";
+  state.lockSetupStep = "enter";
+  state.lockSetupInput = "";
+  state.lockSetupFirstPin = "";
+  setSetupError("");
+  el.lockSetupFlow.classList.add("hidden");
+  updatePinDots(el.setupDots, 0);
+}
+
+function startLockSetupFlow(mode) {
+  state.lockSetupMode = mode;
+  state.lockSetupStep = mode === "change" ? "verify-current" : "enter";
+  state.lockSetupInput = "";
+  state.lockSetupFirstPin = "";
+  setSetupError("");
+  el.lockSetupFlow.classList.remove("hidden");
+  renderLockSetupStep();
+}
+
+function renderLockSetupStep() {
+  const copyByStep = {
+    "verify-current": {
+      title: "現在の4桁コードを確認",
+      description: "変更する前に、いま使っている4桁コードを入力してください。",
+    },
+    enter: {
+      title: "4桁コードを設定",
+      description: "家族や周囲から見られにくくするための4桁コードを入力してください。",
+    },
+    confirm: {
+      title: "4桁コードを再入力",
+      description: "確認のため、もう一度同じ4桁コードを入力してください。",
+    },
+  };
+  const copy = copyByStep[state.lockSetupStep];
+  el.lockSetupTitle.textContent = copy.title;
+  el.lockSetupDescription.textContent = copy.description;
+  updatePinDots(el.setupDots, state.lockSetupInput.length);
+}
+
+async function finishLockSetup(pin) {
+  const codeHash = await hashPin(pin);
+  saveLockConfig({
+    ...state.lockConfig,
+    enabled: true,
+    codeHash,
+  });
+  resetLockSetupFlow();
+  renderLockSettingsUi();
+  scheduleIdleLock();
+}
+
+async function submitLockSetupInput() {
+  const pin = state.lockSetupInput;
+  if (!isFourDigitPin(pin)) {
+    return;
+  }
+
+  try {
+    if (state.lockSetupStep === "verify-current") {
+      const verified = await verifyPin(pin);
+      if (!verified) {
+        state.lockSetupInput = "";
+        setSetupError("現在のコードが違います。");
+        renderLockSetupStep();
+        return;
+      }
+      state.lockSetupStep = "enter";
+      state.lockSetupInput = "";
+      setSetupError("");
+      renderLockSetupStep();
+      return;
+    }
+
+    if (state.lockSetupStep === "enter") {
+      state.lockSetupFirstPin = pin;
+      state.lockSetupInput = "";
+      state.lockSetupStep = "confirm";
+      setSetupError("");
+      renderLockSetupStep();
+      return;
+    }
+
+    if (pin !== state.lockSetupFirstPin) {
+      state.lockSetupStep = "enter";
+      state.lockSetupInput = "";
+      state.lockSetupFirstPin = "";
+      setSetupError("コードが一致しません。最初から入力してください。");
+      renderLockSetupStep();
+      return;
+    }
+
+    await finishLockSetup(pin);
+  } catch (error) {
+    console.error(error);
+    state.lockSetupInput = "";
+    setSetupError("コードの保存に失敗しました。");
+    renderLockSetupStep();
+  }
+}
+
+function handleSetupPadDigit(digit) {
+  if (state.lockSetupMode === "idle" || state.lockSetupInput.length >= 4) {
+    return;
+  }
+  state.lockSetupInput += digit;
+  updatePinDots(el.setupDots, state.lockSetupInput.length);
+  setSetupError("");
+  if (state.lockSetupInput.length === 4) {
+    void submitLockSetupInput();
+  }
+}
+
+function handleSetupPadAction(action) {
+  if (action === "delete") {
+    state.lockSetupInput = state.lockSetupInput.slice(0, -1);
+  } else if (action === "clear") {
+    state.lockSetupInput = "";
+  }
+  updatePinDots(el.setupDots, state.lockSetupInput.length);
+}
+
+function scheduleIdleLock() {
+  clearIdleTimer();
+  if (!isAppLockEnabled() || state.isLocked || !state.authResolved) {
+    return;
+  }
+  if (state.lockConfig.autoLockMs <= 0) {
+    return;
+  }
+  state.idleTimerId = window.setTimeout(() => {
+    void lockApp(LOCK_REASON_IDLE);
+  }, state.lockConfig.autoLockMs);
+}
+
+function noteUserInteraction() {
+  if (!state.authResolved || state.isLocked) {
+    return;
+  }
+  scheduleIdleLock();
+}
+
+function shouldLockOnVisibilityReturn() {
+  if (!isAppLockEnabled() || !state.lastHiddenAt) {
+    return false;
+  }
+  if (state.lockConfig.autoLockMs === 0) {
+    return true;
+  }
+  return Date.now() - state.lastHiddenAt >= state.lockConfig.autoLockMs;
+}
+
+async function lockApp(reason = LOCK_REASON_IDLE) {
+  if (!isAppLockEnabled() || state.isLocked || !state.authResolved) {
+    return;
+  }
+  state.isLocked = true;
+  state.lockInput = "";
+  setLockError("");
+  closeMenus();
+  closeSettingsSheet();
+  clearIdleTimer();
+  updatePinDots(el.lockDots, 0);
+  el.lockOverlay.classList.remove("hidden");
+  el.lockOverlay.setAttribute("aria-hidden", "false");
+  el.lockOverlay.dataset.reason = reason;
+}
+
+function unlockApp() {
+  state.isLocked = false;
+  state.lockInput = "";
+  state.lastHiddenAt = null;
+  setLockError("");
+  updatePinDots(el.lockDots, 0);
+  el.lockOverlay.classList.add("hidden");
+  el.lockOverlay.setAttribute("aria-hidden", "true");
+  scheduleIdleLock();
+}
+
+async function handleLockDigit(digit) {
+  if (!state.isLocked || state.lockInput.length >= 4) {
+    return;
+  }
+  state.lockInput += digit;
+  updatePinDots(el.lockDots, state.lockInput.length);
+  setLockError("");
+  if (state.lockInput.length < 4) {
+    return;
+  }
+
+  try {
+    const verified = await verifyPin(state.lockInput);
+    if (verified) {
+      unlockApp();
+      return;
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  state.lockInput = "";
+  updatePinDots(el.lockDots, 0);
+  setLockError("コードが違います。もう一度入力してください。");
+}
+
+function handleLockAction(action) {
+  if (action === "delete") {
+    state.lockInput = state.lockInput.slice(0, -1);
+  } else if (action === "clear") {
+    state.lockInput = "";
+  }
+  updatePinDots(el.lockDots, state.lockInput.length);
 }
 
 function getPendingReflectionLogs(logs = state.angerLogs) {
@@ -271,6 +654,7 @@ function updateReflectBadge() {
 }
 
 function resetLocalState() {
+  clearIdleTimer();
   state.angerLogs = [];
   state.latestLocation = null;
   state.reflectIndex = 0;
@@ -283,7 +667,9 @@ function resetLocalState() {
   el.locationInfo.textContent = "※位置情報は未取得";
   el.listContainer.innerHTML = "";
   el.reflectContent.innerHTML = "";
-  setUserMenuOpen(false);
+  closeMenus();
+  closeSettingsSheet();
+  unlockApp();
   updateReflectBadge();
   switchScreen("new");
 }
@@ -382,6 +768,9 @@ async function signInWithGoogle() {
 
 async function handleLogout() {
   try {
+    closeMenus();
+    closeSettingsSheet();
+    unlockApp();
     await signOut(auth);
   } catch (error) {
     console.error(error);
@@ -763,22 +1152,88 @@ function escapeHtml(value) {
 }
 
 function handleDocumentClick(event) {
-  if (!state.userMenuOpen) {
-    return;
+  const target = event.target;
+
+  if (state.appMenuOpen && !el.appMenuWrap.contains(target)) {
+    setAppMenuOpen(false);
   }
 
-  if (el.userMenuWrap.contains(event.target)) {
-    return;
+  if (state.userMenuOpen && !el.userMenuWrap.contains(target)) {
+    setUserMenuOpen(false);
   }
 
-  setUserMenuOpen(false);
+  if (!el.settingsSheet.classList.contains("hidden") && target instanceof HTMLElement && target.dataset.sheetClose === "true") {
+    closeSettingsSheet();
+  }
 }
 
 function handleDocumentKeydown(event) {
-  if (event.key === "Escape" && state.userMenuOpen) {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  if (!el.settingsSheet.classList.contains("hidden")) {
+    closeSettingsSheet();
+    el.appMenuButton.focus();
+    return;
+  }
+
+  if (state.userMenuOpen) {
     setUserMenuOpen(false);
     el.userMenuButton.focus();
+    return;
   }
+
+  if (state.appMenuOpen) {
+    setAppMenuOpen(false);
+    el.appMenuButton.focus();
+  }
+}
+
+async function handleLockEnabledChange() {
+  if (el.lockEnabledToggle.checked) {
+    if (isAppLockEnabled()) {
+      renderLockSettingsUi();
+      scheduleIdleLock();
+      return;
+    }
+    startLockSetupFlow("create");
+    renderLockSettingsUi();
+    return;
+  }
+
+  saveLockConfig({
+    ...state.lockConfig,
+    enabled: false,
+    codeHash: "",
+  });
+  resetLockSetupFlow();
+  renderLockSettingsUi();
+  unlockApp();
+}
+
+function handleAutoLockChange() {
+  saveLockConfig({
+    ...state.lockConfig,
+    autoLockMs: normalizeAutoLockMs(el.autoLockSelect.value),
+  });
+  renderLockSettingsUi();
+  scheduleIdleLock();
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "hidden") {
+    state.lastHiddenAt = Date.now();
+    clearIdleTimer();
+    return;
+  }
+
+  if (shouldLockOnVisibilityReturn()) {
+    void lockApp(LOCK_REASON_RESUME);
+    return;
+  }
+
+  noteUserInteraction();
 }
 
 function showUpdateBanner(onReload) {
@@ -872,8 +1327,49 @@ el.authActionButton.addEventListener("click", () => {
 el.gateLoginButton.addEventListener("click", () => {
   void signInWithGoogle();
 });
+el.appMenuButton.addEventListener("click", () => {
+  const nextOpen = !state.appMenuOpen;
+  setUserMenuOpen(false);
+  setAppMenuOpen(nextOpen);
+});
+el.appLockSettingsButton.addEventListener("click", () => {
+  openSettingsSheet();
+});
 el.userMenuButton.addEventListener("click", () => {
-  setUserMenuOpen(!state.userMenuOpen);
+  const nextOpen = !state.userMenuOpen;
+  setAppMenuOpen(false);
+  setUserMenuOpen(nextOpen);
+});
+el.settingsSheetCloseButton.addEventListener("click", () => {
+  closeSettingsSheet();
+});
+el.lockEnabledToggle.addEventListener("change", () => {
+  void handleLockEnabledChange();
+});
+el.autoLockSelect.addEventListener("change", handleAutoLockChange);
+el.changeLockCodeButton.addEventListener("click", () => {
+  startLockSetupFlow("change");
+  renderLockSettingsUi();
+});
+el.setupKeyButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    handleSetupPadDigit(button.dataset.pinKey || "");
+  });
+});
+el.setupActionButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    handleSetupPadAction(button.dataset.pinAction || "");
+  });
+});
+el.lockKeyButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    void handleLockDigit(button.dataset.lockKey || "");
+  });
+});
+el.lockActionButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    handleLockAction(button.dataset.lockAction || "");
+  });
 });
 el.userMenuLogoutButton.addEventListener("click", () => {
   setUserMenuOpen(false);
@@ -881,6 +1377,14 @@ el.userMenuLogoutButton.addEventListener("click", () => {
 });
 document.addEventListener("click", handleDocumentClick);
 document.addEventListener("keydown", handleDocumentKeydown);
+document.addEventListener("visibilitychange", handleVisibilityChange);
+document.addEventListener("pointerdown", noteUserInteraction, { passive: true });
+document.addEventListener("touchstart", noteUserInteraction, { passive: true });
+document.addEventListener("keydown", () => {
+  if (!state.isLocked) {
+    noteUserInteraction();
+  }
+});
 
 onAuthStateChanged(auth, async (user) => {
   try {
@@ -888,7 +1392,11 @@ onAuthStateChanged(auth, async (user) => {
     state.currentUser = user;
 
     if (!user) {
+      state.lastHiddenAt = null;
       resetLocalState();
+      if (isAppLockEnabled()) {
+        await lockApp(LOCK_REASON_STARTUP);
+      }
       renderAuthUi();
       return;
     }
@@ -903,6 +1411,11 @@ onAuthStateChanged(auth, async (user) => {
     alert(`ログイン状態の初期化に失敗しました: ${error.message || ""}`);
   }
 
+  if (isAppLockEnabled()) {
+    await lockApp(LOCK_REASON_STARTUP);
+  } else {
+    noteUserInteraction();
+  }
   renderAuthUi();
 });
 
