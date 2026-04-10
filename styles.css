@@ -168,6 +168,10 @@ main {
   text-align: left;
 }
 
+.menu-item + .menu-item {
+  margin-top: 8px;
+}
+
 .user-menu-info {
   display: grid;
   gap: 4px;
@@ -440,6 +444,107 @@ main {
 
 .lock-pad {
   margin-top: 20px;
+}
+
+.map-screen-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.map-screen-title {
+  margin-top: 0;
+}
+
+.map-back-button {
+  width: auto !important;
+  margin-top: 0 !important;
+  padding-inline: 18px !important;
+  flex-shrink: 0;
+}
+
+.map-status,
+.map-empty-state {
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.map-empty-title,
+.map-detail-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.anger-map {
+  width: 100%;
+  height: min(52vh, 460px);
+  min-height: 320px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: linear-gradient(180deg, #fff6f1 0%, #fff 100%);
+}
+
+.map-detail-card {
+  margin-top: 12px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.map-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.map-intensity-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff1ea;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.map-detail-place {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.map-detail-event {
+  margin-top: 8px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.anger-marker {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px 18px 18px 4px;
+  transform: rotate(45deg);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 16px rgba(56, 31, 18, 0.22);
+  border: 2px solid rgba(255, 255, 255, 0.92);
+}
+
+.anger-marker-label {
+  transform: rotate(-45deg);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .auth-row {
@@ -800,5 +905,19 @@ button.secondary:active,
 
   .pin-key {
     min-height: 52px;
+  }
+
+  .map-screen-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .map-back-button {
+    width: 100% !important;
+  }
+
+  .anger-map {
+    height: 46vh;
+    min-height: 280px;
   }
 }

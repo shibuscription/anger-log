@@ -37,6 +37,9 @@
           </span>
         </button>
         <div id="appMenuPopover" class="menu-popover hidden" role="menu" aria-label="アプリメニュー">
+          <button id="appMapButton" type="button" class="menu-item" role="menuitem">
+            怒りマップ
+          </button>
           <button id="appLockSettingsButton" type="button" class="menu-item" role="menuitem">
             アプリロック設定
           </button>
@@ -127,6 +130,33 @@
 
       <section id="screen-reflect" class="hidden">
         <div id="reflectContent"></div>
+      </section>
+
+      <section id="screen-map" class="hidden">
+        <div class="map-screen-header">
+          <div>
+            <div class="section-title map-screen-title">怒りマップ</div>
+            <div class="small-text">位置情報つきのアンガーログだけを地図に表示します。</div>
+          </div>
+          <button id="mapBackButton" type="button" class="secondary map-back-button">戻る</button>
+        </div>
+
+        <div id="mapStatus" class="map-status small-text">地図を準備しています…</div>
+        <div id="mapEmptyState" class="map-empty-state hidden">
+          <div class="map-empty-title">位置情報つきログがまだありません</div>
+          <div class="small-text">記録画面で位置情報をつけて保存すると、ここに表示されます。</div>
+        </div>
+        <div id="angerMap" class="anger-map hidden" aria-label="怒りマップ"></div>
+        <article id="mapDetailCard" class="map-detail-card hidden" aria-live="polite">
+          <div class="map-detail-head">
+            <div class="map-detail-title">ログの概要</div>
+            <div id="mapDetailIntensity" class="map-intensity-chip">5/10</div>
+          </div>
+          <div id="mapDetailDate" class="small-text"></div>
+          <div id="mapDetailPlace" class="map-detail-place"></div>
+          <div id="mapDetailEvent" class="map-detail-event"></div>
+          <div id="mapDetailBeki" class="small-text"></div>
+        </article>
       </section>
     </section>
   </main>

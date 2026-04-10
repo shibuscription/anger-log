@@ -66,6 +66,8 @@ const LOCK_REASON_RESUME = "resume";
 const LOCK_REASON_IDLE = "idle";
 const DEFAULT_AUTO_LOCK_MS = 5 * 60 * 1000;
 const AUTO_LOCK_OPTIONS = new Set([0, 60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000]);
+const GOOGLE_MAPS_API_KEY = env.VITE_GOOGLE_MAPS_API_KEY || "";
+const GOOGLE_MAPS_MAP_ID = env.VITE_GOOGLE_MAPS_MAP_ID || "";
 
 const state = {
   currentUser: null,
@@ -90,6 +92,12 @@ const state = {
   isLocked: false,
   lastHiddenAt: null,
   idleTimerId: null,
+  currentScreen: "new",
+  googleMapsPromise: null,
+  googleMaps: null,
+  angerMap: null,
+  angerMapMarkers: [],
+  selectedMapLogId: null,
 };
 
 const el = {
@@ -128,10 +136,22 @@ const el = {
   screenNew: document.getElementById("screen-new"),
   screenList: document.getElementById("screen-list"),
   screenReflect: document.getElementById("screen-reflect"),
+  screenMap: document.getElementById("screen-map"),
   navNew: document.getElementById("nav-new"),
   navList: document.getElementById("nav-list"),
   navReflect: document.getElementById("nav-reflect"),
   navReflectBadge: document.getElementById("nav-reflect-badge"),
+  appMapButton: document.getElementById("appMapButton"),
+  mapBackButton: document.getElementById("mapBackButton"),
+  mapStatus: document.getElementById("mapStatus"),
+  mapEmptyState: document.getElementById("mapEmptyState"),
+  angerMap: document.getElementById("angerMap"),
+  mapDetailCard: document.getElementById("mapDetailCard"),
+  mapDetailIntensity: document.getElementById("mapDetailIntensity"),
+  mapDetailDate: document.getElementById("mapDetailDate"),
+  mapDetailPlace: document.getElementById("mapDetailPlace"),
+  mapDetailEvent: document.getElementById("mapDetailEvent"),
+  mapDetailBeki: document.getElementById("mapDetailBeki"),
   settingsSheet: document.getElementById("settingsSheet"),
   settingsSheetCloseButton: document.getElementById("settingsSheetCloseButton"),
   lockEnabledToggle: document.getElementById("lockEnabledToggle"),
@@ -653,6 +673,221 @@ function updateReflectBadge() {
   el.navReflectBadge.classList.remove("hidden");
 }
 
+function getLogsWithLocation(logs = state.angerLogs) {
+  return logs.filter((log) => {
+    const latitude = Number(log?.location?.latitude);
+    const longitude = Number(log?.location?.longitude);
+    return Number.isFinite(latitude) && Number.isFinite(longitude);
+  });
+}
+
+function formatLogDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "日時不明";
+  }
+
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${y}/${m}/${d} ${h}:${min}`;
+}
+
+function getIntensityColor(intensity) {
+  if (intensity >= 9) {
+    return "#a8322d";
+  }
+  if (intensity >= 7) {
+    return "#df4a36";
+  }
+  if (intensity >= 4) {
+    return "#ee9f39";
+  }
+  return "#4d8de0";
+}
+
+function resetMapDetail() {
+  state.selectedMapLogId = null;
+  el.mapDetailCard.classList.add("hidden");
+}
+
+function renderMapDetail(log) {
+  state.selectedMapLogId = log.id;
+  el.mapDetailIntensity.textContent = `${log.intensity}/10`;
+  el.mapDetailIntensity.style.background = `${getIntensityColor(Number(log.intensity))}1a`;
+  el.mapDetailIntensity.style.color = getIntensityColor(Number(log.intensity));
+  el.mapDetailDate.textContent = formatLogDate(log.date);
+  el.mapDetailPlace.textContent = log.place || "場所未入力";
+  el.mapDetailEvent.textContent = log.event || "出来事未入力";
+  el.mapDetailBeki.textContent = log.beki_text ? "べき入力済み" : "べき未入力";
+  el.mapDetailCard.classList.remove("hidden");
+}
+
+function clearMapMarkers() {
+  state.angerMapMarkers.forEach((marker) => {
+    marker.map = null;
+  });
+  state.angerMapMarkers = [];
+}
+
+function setMapStatus(message = "") {
+  el.mapStatus.textContent = message;
+  el.mapStatus.classList.toggle("hidden", !message);
+}
+
+function createMarkerContent(intensity) {
+  const marker = document.createElement("div");
+  marker.className = "anger-marker";
+  marker.style.background = getIntensityColor(Number(intensity));
+
+  const label = document.createElement("span");
+  label.className = "anger-marker-label";
+  label.textContent = String(intensity);
+
+  marker.appendChild(label);
+  return marker;
+}
+
+function getMapsConfigError() {
+  if (!GOOGLE_MAPS_API_KEY || !GOOGLE_MAPS_MAP_ID) {
+    return "Google Maps の設定が不足しています。`.env` の API キーと Map ID を確認してください。";
+  }
+  return "";
+}
+
+async function loadGoogleMapsApi() {
+  if (state.googleMaps) {
+    return state.googleMaps;
+  }
+
+  const configError = getMapsConfigError();
+  if (configError) {
+    throw new Error(configError);
+  }
+
+  if (!state.googleMapsPromise) {
+    state.googleMapsPromise = new Promise((resolve, reject) => {
+      if (window.google?.maps) {
+        resolve(window.google.maps);
+        return;
+      }
+
+      window.__angerLogInitGoogleMaps = () => {
+        delete window.__angerLogInitGoogleMaps;
+        resolve(window.google.maps);
+      };
+
+      const script = document.createElement("script");
+      script.src =
+        `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}` +
+        `&v=weekly&libraries=marker&loading=async&callback=__angerLogInitGoogleMaps`;
+      script.async = true;
+      script.defer = true;
+      script.onerror = () => {
+        delete window.__angerLogInitGoogleMaps;
+        reject(new Error("Google Maps の読み込みに失敗しました。"));
+      };
+      document.head.appendChild(script);
+    }).then((maps) => {
+      state.googleMaps = maps;
+      return maps;
+    });
+  }
+
+  return state.googleMapsPromise;
+}
+
+async function ensureAngerMapInstance() {
+  const maps = await loadGoogleMapsApi();
+  if (state.angerMap) {
+    return { maps, map: state.angerMap };
+  }
+
+  state.angerMap = new maps.Map(el.angerMap, {
+    center: { lat: 35.681236, lng: 139.767125 },
+    zoom: 11,
+    mapId: GOOGLE_MAPS_MAP_ID,
+    fullscreenControl: false,
+    mapTypeControl: false,
+    streetViewControl: false,
+  });
+
+  return { maps, map: state.angerMap };
+}
+
+async function renderAngerMap() {
+  if (!state.currentUser) {
+    return;
+  }
+
+  setMapStatus("地図を準備しています…");
+  el.angerMap.classList.add("hidden");
+  el.mapEmptyState.classList.add("hidden");
+  resetMapDetail();
+
+  try {
+    await loadAllLogs();
+  } catch (error) {
+    console.error(error);
+    setMapStatus("ログの取得に失敗しました。");
+    return;
+  }
+
+  const logs = getLogsWithLocation();
+  if (logs.length === 0) {
+    clearMapMarkers();
+    setMapStatus("");
+    el.mapEmptyState.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    const { maps, map } = await ensureAngerMapInstance();
+    const { AdvancedMarkerElement } = await maps.importLibrary("marker");
+    const bounds = new maps.LatLngBounds();
+
+    clearMapMarkers();
+
+    logs.forEach((log) => {
+      const position = {
+        lat: Number(log.location.latitude),
+        lng: Number(log.location.longitude),
+      };
+
+      const marker = new AdvancedMarkerElement({
+        map,
+        position,
+        title: `${formatLogDate(log.date)} ${log.place || "場所未入力"}`,
+        content: createMarkerContent(log.intensity),
+      });
+
+      marker.addListener("click", () => {
+        renderMapDetail(log);
+      });
+
+      state.angerMapMarkers.push(marker);
+      bounds.extend(position);
+    });
+
+    if (logs.length === 1) {
+      map.setCenter(bounds.getCenter());
+      map.setZoom(15);
+      renderMapDetail(logs[0]);
+    } else {
+      map.fitBounds(bounds, 56);
+    }
+
+    maps.event.trigger(map, "resize");
+    setMapStatus("");
+    el.angerMap.classList.remove("hidden");
+  } catch (error) {
+    console.error(error);
+    setMapStatus(error.message || "地図の表示に失敗しました。");
+  }
+}
+
 function resetLocalState() {
   clearIdleTimer();
   state.angerLogs = [];
@@ -660,6 +895,7 @@ function resetLocalState() {
   state.reflectIndex = 0;
   state.reflectSingleMode = false;
   state.reflectList = [];
+  state.currentScreen = "new";
   el.place.value = "";
   el.event.value = "";
   el.intensity.value = 5;
@@ -667,6 +903,11 @@ function resetLocalState() {
   el.locationInfo.textContent = "※位置情報は未取得";
   el.listContainer.innerHTML = "";
   el.reflectContent.innerHTML = "";
+  resetMapDetail();
+  clearMapMarkers();
+  setMapStatus("");
+  el.mapEmptyState.classList.add("hidden");
+  el.angerMap.classList.add("hidden");
   closeMenus();
   closeSettingsSheet();
   unlockApp();
@@ -723,9 +964,11 @@ function updateNowText() {
 }
 
 function switchScreen(key) {
+  state.currentScreen = key;
   el.screenNew.classList.add("hidden");
   el.screenList.classList.add("hidden");
   el.screenReflect.classList.add("hidden");
+  el.screenMap.classList.add("hidden");
   el.navNew.classList.remove("active");
   el.navList.classList.remove("active");
   el.navReflect.classList.remove("active");
@@ -748,6 +991,10 @@ function switchScreen(key) {
       void startReflection();
     }
     state.reflectSingleMode = false;
+  } else if (key === "map") {
+    el.screenMap.classList.remove("hidden");
+    el.appTitle.textContent = "怒りマップ";
+    void renderAngerMap();
   }
 }
 
@@ -868,6 +1115,9 @@ async function saveAngerLog() {
   state.latestLocation = null;
   el.locationInfo.textContent = "※位置情報は未取得";
   updateNowText();
+  if (state.currentScreen === "map") {
+    void renderAngerMap();
+  }
 
   alert("怒りを記録しました。");
 }
@@ -1102,6 +1352,9 @@ async function saveBekiFor(id, singleMode) {
   state.angerLogs = state.angerLogs.map((item) => (item.id === id ? applyUpdate(item) : item));
   state.reflectList = state.reflectList.map((item) => (item.id === id ? applyUpdate(item) : item));
   updateReflectBadge();
+  if (state.currentScreen === "map") {
+    void renderAngerMap();
+  }
 
   alert("べきと怒りの内容を保存しました。");
 
@@ -1134,6 +1387,9 @@ async function deleteAngerLogEntry(id, singleMode) {
   state.angerLogs = state.angerLogs.filter((item) => item.id !== id);
   state.reflectList = state.reflectList.filter((item) => item.id !== id);
   updateReflectBadge();
+  if (state.currentScreen === "map") {
+    void renderAngerMap();
+  }
 
   if (singleMode) {
     switchScreen("list");
@@ -1332,8 +1588,19 @@ el.appMenuButton.addEventListener("click", () => {
   setUserMenuOpen(false);
   setAppMenuOpen(nextOpen);
 });
+el.appMapButton.addEventListener("click", () => {
+  closeMenus();
+  if (!state.currentUser) {
+    alert("Google ログイン後に怒りマップを利用できます。");
+    return;
+  }
+  switchScreen("map");
+});
 el.appLockSettingsButton.addEventListener("click", () => {
   openSettingsSheet();
+});
+el.mapBackButton.addEventListener("click", () => {
+  switchScreen("new");
 });
 el.userMenuButton.addEventListener("click", () => {
   const nextOpen = !state.userMenuOpen;
