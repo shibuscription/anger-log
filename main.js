@@ -688,7 +688,19 @@ function handleLockAction(action) {
   updatePinDots(el.lockDots, state.lockInput.length);
 }
 
-function getPendingReflectionLogs(logs = state.angerLogs) {
+function isBekiRecorded(log) {
+  return Boolean(String(log?.beki_text ?? "").trim());
+}
+
+function isBekiPending(log) {
+  return !isBekiRecorded(log);
+}
+
+function getPendingBekiLogs(logs = state.angerLogs) {
+  return logs.filter((log) => isBekiPending(log));
+}
+
+function getTodayPendingReflectionLogs(logs = state.angerLogs) {
   const today = new Date();
   const y = today.getFullYear();
   const m = today.getMonth();
@@ -700,7 +712,7 @@ function getPendingReflectionLogs(logs = state.angerLogs) {
       logDate.getFullYear() === y &&
       logDate.getMonth() === m &&
       logDate.getDate() === d &&
-      !log.beki_text
+      isBekiPending(log)
     );
   });
 }
@@ -712,7 +724,7 @@ function updateReflectBadge() {
     return;
   }
 
-  const count = getPendingReflectionLogs().length;
+  const count = getPendingBekiLogs().length;
   if (count <= 0) {
     el.navReflectBadge.classList.add("hidden");
     el.navReflectBadge.textContent = "0";
@@ -1287,7 +1299,7 @@ async function renderList() {
     const day = String(d.getDate()).padStart(2, "0");
     const h = String(d.getHours()).padStart(2, "0");
     const min = String(d.getMinutes()).padStart(2, "0");
-    const bekiDone = !!log.beki_text;
+    const bekiDone = isBekiRecorded(log);
     const eventShort = `${log.event.slice(0, 40)}${log.event.length > 40 ? "…" : ""}`;
     const bekiShort = log.beki_text
       ? `${log.beki_text.slice(0, 40)}${log.beki_text.length > 40 ? "…" : ""}`
@@ -1348,7 +1360,7 @@ async function startReflection() {
     return;
   }
 
-  state.reflectList = getPendingReflectionLogs()
+  state.reflectList = getTodayPendingReflectionLogs()
     .sort((a, b) => (a.date > b.date ? 1 : -1));
 
   state.reflectIndex = 0;
