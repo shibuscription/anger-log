@@ -5,7 +5,6 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithRedirect,
-  signInWithPopup,
   signOut,
 } from "firebase/auth";
 import {
@@ -229,17 +228,6 @@ function saveLockConfig(nextConfig) {
 
 function getIsStandaloneDisplayMode() {
   return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
-}
-
-function isSafariFamilyBrowser() {
-  const ua = navigator.userAgent;
-  const isSafari = /Safari/i.test(ua) && !/Chrome|CriOS|Edg|OPR|Firefox|FxiOS|SamsungBrowser/i.test(ua);
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  return isSafari || isIOS;
-}
-
-function shouldPreferRedirectLogin() {
-  return getIsStandaloneDisplayMode() || isSafariFamilyBrowser();
 }
 
 function markRedirectPending(active) {
@@ -814,13 +802,21 @@ function setAuthActionState(action = null) {
 }
 
 async function resolveRedirectResultIfNeeded() {
-  if (!isRedirectPending()) {
-    return;
+  const hadPending = isRedirectPending();
+  if (hadPending) {
+    setAuthActionState("login");
   }
 
-  setAuthActionState("login");
   try {
-    await getRedirectResult(auth);
+    const result = await getRedirectResult(auth);
+    if (result?.user) {
+      console.info("Google redirect sign-in resolved", {
+        uid: result.user.uid,
+        email: result.user.email || "",
+      });
+    } else if (hadPending) {
+      console.warn("Google redirect sign-in returned no result after pending flag.");
+    }
   } catch (error) {
     logAuthError(error, "redirect-result");
     if (isRequestedActionInvalidError(error)) {
@@ -1124,43 +1120,13 @@ async function signInWithGoogle() {
   }
 
   setAuthActionState("login");
-  const preferRedirect = shouldPreferRedirectLogin();
   try {
-    if (preferRedirect) {
-      markRedirectPending(true);
-      await signInWithRedirect(auth, provider);
-      return;
-    }
-
-    await signInWithPopup(auth, provider);
+    markRedirectPending(true);
+    await signInWithRedirect(auth, provider);
   } catch (error) {
-    logAuthError(error, preferRedirect ? "redirect" : "popup");
-
-    if (
-      !preferRedirect &&
-      (
-        error?.code === "auth/popup-blocked" ||
-        error?.code === "auth/popup-closed-by-user" ||
-        error?.code === "auth/cancelled-popup-request" ||
-        error?.code === "auth/operation-not-supported-in-this-environment" ||
-        isRequestedActionInvalidError(error)
-      )
-    ) {
-      try {
-        markRedirectPending(true);
-        await signInWithRedirect(auth, provider);
-        return;
-      } catch (redirectError) {
-        logAuthError(redirectError, "redirect-fallback");
-        markRedirectPending(false);
-        alert(`ログインに失敗しました: ${redirectError.message || ""}`);
-        return;
-      }
-    }
-
-    if (error?.code === "auth/cancelled-popup-request" || error?.code === "auth/popup-closed-by-user") {
-      alert("ログインは完了しませんでした。もう一度お試しください。");
-    } else if (isRequestedActionInvalidError(error)) {
+    logAuthError(error, "redirect-start");
+    markRedirectPending(false);
+    if (isRequestedActionInvalidError(error)) {
       alert("Google ログインを完了できませんでした。Firebase Auth の Authorized Domains と authDomain を確認してください。");
     } else {
       alert(`ログインに失敗しました: ${error.message || ""}`);
