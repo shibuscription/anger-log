@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auth Test - Anger Log</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f7;
+      --card: #ffffff;
+      --text: #2d2a28;
+      --muted: #6d6762;
+      --line: #e4ddd7;
+      --accent: #ff7043;
+      --danger: #b63821;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0 0 6px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .secondary {
+      background: #efe7e2;
+      color: var(--text);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 8px 12px;
+      margin-top: 6px;
+      font-size: 13px;
+    }
+
+    .k {
+      color: var(--muted);
+      word-break: break-word;
+    }
+
+    .v {
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .error {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f4efeb;
+      border-radius: 8px;
+      padding: 2px 6px;
+    }
+
+    @media (max-width: 640px) {
+      .kv {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Google Auth Test (Redirect Only)</h1>
+      <p>既存アプリ本体と分離した、認証切り分け用の最小画面です。<code>signInWithRedirect</code> のみ使用します。</p>
+    </section>
+
+    <section class="card">
+      <div class="actions">
+        <button id="loginButton" type="button" class="primary">Googleでログイン</button>
+        <button id="logoutButton" type="button" class="secondary">ログアウト</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="kv">
+        <div class="k">処理状態</div>
+        <div id="busyState" class="v">idle</div>
+
+        <div class="k">ログイン状態</div>
+        <div id="authState" class="v">確認中...</div>
+
+        <div class="k">redirect結果</div>
+        <div id="redirectState" class="v">未処理</div>
+
+        <div class="k">最後のエラー</div>
+        <div id="lastError" class="v">なし</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="kv">
+        <div class="k">uid</div>
+        <div id="uid" class="v">-</div>
+
+        <div class="k">displayName</div>
+        <div id="displayName" class="v">-</div>
+
+        <div class="k">email</div>
+        <div id="email" class="v">-</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="kv">
+        <div class="k">origin</div>
+        <div id="origin" class="v">-</div>
+
+        <div class="k">authDomain</div>
+        <div id="authDomain" class="v">-</div>
+
+        <div class="k">userAgent</div>
+        <div id="userAgent" class="v">-</div>
+
+        <div class="k">service worker controller</div>
+        <div id="swController" class="v">-</div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/auth-test.js"></script>
+</body>
+
+</html>
