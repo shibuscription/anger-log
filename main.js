@@ -54,6 +54,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
+provider.setCustomParameters({
+  prompt: "select_account",
+});
 
 enableIndexedDbPersistence(db).catch((err) => {
   console.warn("オフライン永続化エラー:", err.code);
@@ -68,6 +71,8 @@ const DEFAULT_AUTO_LOCK_MS = 5 * 60 * 1000;
 const AUTO_LOCK_OPTIONS = new Set([0, 60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000]);
 const GOOGLE_MAPS_API_KEY = env.VITE_GOOGLE_MAPS_API_KEY || "";
 const GOOGLE_MAPS_MAP_ID = env.VITE_GOOGLE_MAPS_MAP_ID || "";
+const MAX_ANGER_MAP_ZOOM = 16;
+const SINGLE_LOG_MAP_ZOOM = 14;
 
 const state = {
   currentUser: null,
@@ -98,6 +103,7 @@ const state = {
   angerMap: null,
   angerMapMarkers: [],
   selectedMapLogId: null,
+  authActionInFlight: null,
 };
 
 const el = {
@@ -732,6 +738,25 @@ function clearMapMarkers() {
   state.angerMapMarkers = [];
 }
 
+function setAuthActionState(action = null) {
+  state.authActionInFlight = action;
+
+  const isBusy = Boolean(action);
+  el.authActionButton.disabled = isBusy || !state.authResolved;
+  el.gateLoginButton.disabled = isBusy;
+  el.userMenuLogoutButton.disabled = isBusy;
+
+  if (action === "login") {
+    el.authActionButton.textContent = "ログイン中…";
+    el.gateLoginButton.textContent = "ログイン中…";
+  } else if (action === "logout") {
+    el.userMenuLogoutButton.textContent = "ログアウト中…";
+  } else {
+    el.gateLoginButton.textContent = "Google でログイン";
+    el.userMenuLogoutButton.textContent = "ログアウト";
+  }
+}
+
 function setMapStatus(message = "") {
   el.mapStatus.textContent = message;
   el.mapStatus.classList.toggle("hidden", !message);
@@ -873,10 +898,15 @@ async function renderAngerMap() {
 
     if (logs.length === 1) {
       map.setCenter(bounds.getCenter());
-      map.setZoom(15);
+      map.setZoom(SINGLE_LOG_MAP_ZOOM);
       renderMapDetail(logs[0]);
     } else {
       map.fitBounds(bounds, 56);
+      maps.event.addListenerOnce(map, "idle", () => {
+        if (map.getZoom() > MAX_ANGER_MAP_ZOOM) {
+          map.setZoom(MAX_ANGER_MAP_ZOOM);
+        }
+      });
     }
 
     maps.event.trigger(map, "resize");
@@ -926,7 +956,9 @@ function renderAuthUi() {
     el.authGate.classList.add("hidden");
     el.appShell.classList.add("hidden");
     el.bottomNav.classList.add("hidden");
+    el.appMenuWrap.classList.add("hidden");
     el.userMenuWrap.classList.add("hidden");
+    setAuthActionState(null);
     return;
   }
 
@@ -936,11 +968,13 @@ function renderAuthUi() {
     el.authSecondaryText.textContent = "Google アカウントでログインすると、自分専用のログを使えます。";
     el.authStatusText.textContent = "未ログイン時は個人ログを読み書きしません。";
     el.authActionButton.textContent = "Google でログイン";
-    el.authActionButton.disabled = false;
+    el.authActionButton.disabled = Boolean(state.authActionInFlight);
     el.authGate.classList.remove("hidden");
     el.appShell.classList.add("hidden");
     el.bottomNav.classList.add("hidden");
+    el.appMenuWrap.classList.add("hidden");
     el.userMenuWrap.classList.add("hidden");
+    setAuthActionState(state.authActionInFlight);
     return;
   }
 
@@ -948,9 +982,11 @@ function renderAuthUi() {
   el.authGate.classList.add("hidden");
   el.appShell.classList.remove("hidden");
   el.bottomNav.classList.remove("hidden");
+  el.appMenuWrap.classList.remove("hidden");
   el.userMenuWrap.classList.remove("hidden");
   updateUserMenu(state.currentUser);
   updateReflectBadge();
+  setAuthActionState(state.authActionInFlight);
 }
 
 function updateNowText() {
@@ -1005,15 +1041,32 @@ async function loadAllLogs() {
 }
 
 async function signInWithGoogle() {
+  if (state.authActionInFlight) {
+    return;
+  }
+
+  setAuthActionState("login");
   try {
     await signInWithPopup(auth, provider);
   } catch (error) {
     console.error(error);
-    alert(`ログインに失敗しました: ${error.message || ""}`);
+    if (error?.code === "auth/cancelled-popup-request" || error?.code === "auth/popup-closed-by-user") {
+      alert("ログインは完了しませんでした。もう一度お試しください。");
+    } else {
+      alert(`ログインに失敗しました: ${error.message || ""}`);
+    }
+  } finally {
+    setAuthActionState(null);
+    renderAuthUi();
   }
 }
 
 async function handleLogout() {
+  if (state.authActionInFlight) {
+    return;
+  }
+
+  setAuthActionState("logout");
   try {
     closeMenus();
     closeSettingsSheet();
@@ -1022,11 +1075,14 @@ async function handleLogout() {
   } catch (error) {
     console.error(error);
     alert(`ログアウトに失敗しました: ${error.message || ""}`);
+  } finally {
+    setAuthActionState(null);
+    renderAuthUi();
   }
 }
 
 async function handleAuthAction() {
-  if (!state.currentUser) {
+  if (!state.currentUser && !state.authActionInFlight) {
     await signInWithGoogle();
   }
 }
