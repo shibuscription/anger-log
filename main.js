@@ -700,23 +700,6 @@ function getPendingBekiLogs(logs = state.angerLogs) {
   return logs.filter((log) => isBekiPending(log));
 }
 
-function getTodayPendingReflectionLogs(logs = state.angerLogs) {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  const d = today.getDate();
-
-  return logs.filter((log) => {
-    const logDate = new Date(log.date);
-    return (
-      logDate.getFullYear() === y &&
-      logDate.getMonth() === m &&
-      logDate.getDate() === d &&
-      isBekiPending(log)
-    );
-  });
-}
-
 function updateReflectBadge() {
   if (!state.currentUser) {
     el.navReflectBadge.classList.add("hidden");
@@ -1108,7 +1091,7 @@ function switchScreen(key) {
   } else if (key === "reflect") {
     el.screenReflect.classList.remove("hidden");
     el.navReflect.classList.add("active");
-    el.appTitle.textContent = state.reflectSingleMode ? "べきの詳細" : "今日のべきふりかえり";
+    el.appTitle.textContent = state.reflectSingleMode ? "べきの詳細" : "未記録のべきふりかえり";
     if (!state.reflectSingleMode) {
       void startReflection();
     }
@@ -1360,8 +1343,8 @@ async function startReflection() {
     return;
   }
 
-  state.reflectList = getTodayPendingReflectionLogs()
-    .sort((a, b) => (a.date > b.date ? 1 : -1));
+  state.reflectList = getPendingBekiLogs()
+    .sort((a, b) => (a.date > b.date ? -1 : 1));
 
   state.reflectIndex = 0;
 
