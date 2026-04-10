@@ -1,6 +1,7 @@
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const STATIC_CACHE = `angerlog-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `angerlog-runtime-${CACHE_VERSION}`;
+const DEBUG_AUTH_BYPASS = false;
 const PRECACHE_URLS = [
   "/",
   "/index.html",
@@ -49,6 +50,14 @@ self.addEventListener("fetch", (event) => {
 
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
+
+  // Firebase Auth helper endpoints must never be handled by app SW caches.
+  if (requestUrl.pathname.startsWith("/__/")) {
+    if (DEBUG_AUTH_BYPASS) {
+      console.debug("[sw] bypass firebase reserved path:", requestUrl.pathname);
+    }
     return;
   }
 
