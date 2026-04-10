@@ -1,8 +1,10 @@
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithRedirect,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
@@ -73,6 +75,7 @@ const GOOGLE_MAPS_API_KEY = env.VITE_GOOGLE_MAPS_API_KEY || "";
 const GOOGLE_MAPS_MAP_ID = env.VITE_GOOGLE_MAPS_MAP_ID || "";
 const MAX_ANGER_MAP_ZOOM = 16;
 const SINGLE_LOG_MAP_ZOOM = 14;
+const AUTH_REDIRECT_PENDING_KEY = "angerlog.auth.redirect_pending";
 
 const state = {
   currentUser: null,
@@ -104,6 +107,7 @@ const state = {
   angerMapMarkers: [],
   selectedMapLogId: null,
   authActionInFlight: null,
+  authErrorContext: null,
 };
 
 const el = {
@@ -221,6 +225,58 @@ function saveLockConfig(nextConfig) {
     autoLockMs: normalizeAutoLockMs(nextConfig.autoLockMs),
   };
   localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(state.lockConfig));
+}
+
+function getIsStandaloneDisplayMode() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
+function isSafariFamilyBrowser() {
+  const ua = navigator.userAgent;
+  const isSafari = /Safari/i.test(ua) && !/Chrome|CriOS|Edg|OPR|Firefox|FxiOS|SamsungBrowser/i.test(ua);
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  return isSafari || isIOS;
+}
+
+function shouldPreferRedirectLogin() {
+  return getIsStandaloneDisplayMode() || isSafariFamilyBrowser();
+}
+
+function markRedirectPending(active) {
+  if (active) {
+    sessionStorage.setItem(AUTH_REDIRECT_PENDING_KEY, "1");
+    return;
+  }
+  sessionStorage.removeItem(AUTH_REDIRECT_PENDING_KEY);
+}
+
+function isRedirectPending() {
+  return sessionStorage.getItem(AUTH_REDIRECT_PENDING_KEY) === "1";
+}
+
+function buildAuthErrorDetails(error, mode) {
+  return {
+    mode,
+    code: error?.code || "",
+    message: error?.message || "",
+    customData: error?.customData || null,
+    authDomain: firebaseConfig.authDomain,
+    currentOrigin: window.location.origin,
+    currentPath: window.location.pathname,
+    standalone: getIsStandaloneDisplayMode(),
+    userAgent: navigator.userAgent,
+  };
+}
+
+function logAuthError(error, mode) {
+  const details = buildAuthErrorDetails(error, mode);
+  state.authErrorContext = details;
+  console.error("Google sign-in failed", details);
+}
+
+function isRequestedActionInvalidError(error) {
+  const message = String(error?.message || "");
+  return /requested action is invalid/i.test(message);
 }
 
 function isFourDigitPin(value) {
@@ -757,6 +813,28 @@ function setAuthActionState(action = null) {
   }
 }
 
+async function resolveRedirectResultIfNeeded() {
+  if (!isRedirectPending()) {
+    return;
+  }
+
+  setAuthActionState("login");
+  try {
+    await getRedirectResult(auth);
+  } catch (error) {
+    logAuthError(error, "redirect-result");
+    if (isRequestedActionInvalidError(error)) {
+      alert("Google ログインを完了できませんでした。Firebase Auth の Authorized Domains と authDomain を確認してください。");
+    } else {
+      alert(`ログインに失敗しました: ${error.message || ""}`);
+    }
+  } finally {
+    markRedirectPending(false);
+    setAuthActionState(null);
+    renderAuthUi();
+  }
+}
+
 function setMapStatus(message = "") {
   el.mapStatus.textContent = message;
   el.mapStatus.classList.toggle("hidden", !message);
@@ -1046,18 +1124,52 @@ async function signInWithGoogle() {
   }
 
   setAuthActionState("login");
+  const preferRedirect = shouldPreferRedirectLogin();
   try {
+    if (preferRedirect) {
+      markRedirectPending(true);
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+
     await signInWithPopup(auth, provider);
   } catch (error) {
-    console.error(error);
+    logAuthError(error, preferRedirect ? "redirect" : "popup");
+
+    if (
+      !preferRedirect &&
+      (
+        error?.code === "auth/popup-blocked" ||
+        error?.code === "auth/popup-closed-by-user" ||
+        error?.code === "auth/cancelled-popup-request" ||
+        error?.code === "auth/operation-not-supported-in-this-environment" ||
+        isRequestedActionInvalidError(error)
+      )
+    ) {
+      try {
+        markRedirectPending(true);
+        await signInWithRedirect(auth, provider);
+        return;
+      } catch (redirectError) {
+        logAuthError(redirectError, "redirect-fallback");
+        markRedirectPending(false);
+        alert(`ログインに失敗しました: ${redirectError.message || ""}`);
+        return;
+      }
+    }
+
     if (error?.code === "auth/cancelled-popup-request" || error?.code === "auth/popup-closed-by-user") {
       alert("ログインは完了しませんでした。もう一度お試しください。");
+    } else if (isRequestedActionInvalidError(error)) {
+      alert("Google ログインを完了できませんでした。Firebase Auth の Authorized Domains と authDomain を確認してください。");
     } else {
       alert(`ログインに失敗しました: ${error.message || ""}`);
     }
   } finally {
-    setAuthActionState(null);
-    renderAuthUi();
+    if (!isRedirectPending()) {
+      setAuthActionState(null);
+      renderAuthUi();
+    }
   }
 }
 
@@ -1068,6 +1180,7 @@ async function handleLogout() {
 
   setAuthActionState("logout");
   try {
+    markRedirectPending(false);
     closeMenus();
     closeSettingsSheet();
     unlockApp();
@@ -1637,7 +1750,7 @@ el.authActionButton.addEventListener("click", () => {
   void handleAuthAction();
 });
 el.gateLoginButton.addEventListener("click", () => {
-  void signInWithGoogle();
+  void handleAuthAction();
 });
 el.appMenuButton.addEventListener("click", () => {
   const nextOpen = !state.appMenuOpen;
@@ -1744,4 +1857,9 @@ onAuthStateChanged(auth, async (user) => {
 
 updateNowText();
 renderAuthUi();
+if (isRedirectPending()) {
+  setAuthActionState("login");
+  renderAuthUi();
+}
+void resolveRedirectResultIfNeeded();
 setupServiceWorkerUpdateFlow();
